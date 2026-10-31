@@ -1,0 +1,122 @@
+name: pasha-crm
+
+# Development: `make infra-up` starts only postgres and redis.
+# Server:      `make deploy` (or scripts/deploy.sh) builds and starts everything
+#              with the `app` profile, runs migrations and puts Caddy (HTTPS) in front.
+
+x-image-args: &image-args
+  NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
+  NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pasha}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pasha_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-pasha_crm}
+      TZ: UTC
+    ports:
+      - '127.0.0.1:5432:5432' # only reachable from the server itself
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: ${REDIS_IMAGE:-redis:7-alpine}
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    ports:
+      - '127.0.0.1:6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    profiles: ['app']
+    image: pasha-crm-api:${APP_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      args: *image-args
+    restart: unless-stopped
+    env_file: .env
+    environment: &api-env
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-pasha}:${POSTGRES_PASSWORD:-pasha_dev_password}@postgres:5432/${POSTGRES_DB:-pasha_crm}
+      REDIS_URL: redis://redis:6379
+      STORAGE_LOCAL_DIR: /app/storage
+      OTP_DEV_LOG: 'false'
+      CORS_ORIGINS: https://${DOMAIN:-localhost}
+    volumes:
+      - file_storage:/app/storage
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  # One-off: docker compose --profile app run --rm migrate
+  migrate:
+    profiles: ['tools']
+    image: pasha-crm-api:${APP_VERSION:-latest}
+    env_file: .env
+    environment: *api-env
+    command:
+      ['node', 'node_modules/typeorm/cli.js', 'migration:run', '-d', 'dist/database/data-source.js']
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  # One-off: docker compose --profile tools run --rm seed
+  seed:
+    profiles: ['tools']
+    image: pasha-crm-api:${APP_VERSION:-latest}
+    env_file: .env
+    environment: *api-env
+    command: ['node', 'dist/database/seeds/run-seed.js']
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  web:
+    profiles: ['app']
+    image: pasha-crm-web:${APP_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args: *image-args
+    restart: unless-stopped
+    environment:
+      API_INTERNAL_URL: http://api:4000
+    depends_on:
+      - api
+
+  # HTTPS with automatic Let's Encrypt certificates for $DOMAIN.
+  caddy:
+    profiles: ['app']
+    image: ${CADDY_IMAGE:-caddy:2-alpine}
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+volumes:
+  postgres_data:
+  redis_data:
+  file_storage:
+  caddy_data:
+  caddy_config:

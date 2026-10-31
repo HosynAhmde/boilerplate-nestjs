@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+
+onlyBuiltDependencies:
+  - msgpackr-extract
+  - sharp
+  - unrs-resolver
+
+ignoredBuiltDependencies:
+  - '@scarf/scarf'

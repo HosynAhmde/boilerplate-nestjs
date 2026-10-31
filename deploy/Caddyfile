@@ -1,0 +1,16 @@
+{$DOMAIN} {
+	encode zstd gzip
+
+	# The web app proxies /api/v1/* to the API itself; the API is never exposed directly.
+	reverse_proxy web:3000
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# Uploads (payment receipts) can be a few MB.
+	request_body {
+		max_size 20MB
+	}
+}

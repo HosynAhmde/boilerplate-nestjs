@@ -1,0 +1,10 @@
+html,
+body {
+  min-height: 100%;
+}
+
+/* Numbers, mobiles and codes stay left-to-right inside RTL text. */
+.ltr {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
