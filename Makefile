@@ -55,6 +55,16 @@ logs: ## Follow API and web logs
 	$(COMPOSE) --profile app logs -f --tail=200 api web
 
 ps: ## Show service status
-	$(COMPOSE) --profile app ps
+	$(COMPOSE) --profile app --profile monitoring ps
 
-.PHONY: help setup install infra-up infra-down dev migrate migration-generate migration-revert seed check check-e2e format deploy backup logs ps
+health: ## Check API readiness (database, Redis, storage) on the server
+	@$(COMPOSE) --profile app exec -T api wget -qO- http://127.0.0.1:4000/api/v1/health; echo
+
+## ---- monitoring ----
+monitoring-up: ## Start Prometheus, Grafana, Loki, Alertmanager and exporters
+	./scripts/monitoring.sh
+
+monitoring-down: ## Stop the monitoring stack (data is kept)
+	./scripts/monitoring.sh down
+
+.PHONY: help setup install infra-up infra-down dev migrate migration-generate migration-revert seed check check-e2e format deploy backup logs ps health monitoring-up monitoring-down

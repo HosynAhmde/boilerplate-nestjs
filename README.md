@@ -84,3 +84,51 @@ docker compose --profile tools run --rm seed   # فقط بار اول
 
 - `GET /api/v1/health/live`: فقط زنده بودن پروسه
 - `GET /api/v1/health`: دیتابیس، Redis و فضای فایل
+- `GET /healthz` (وب): زنده بودن سرور Next.js
+- `make health` روی سرور: نتیجه کامل بررسی سلامت API
+
+## مدیریت خطا
+
+- همه خطاهای API یک شکل دارند (فیلتر سراسری `AllExceptionsFilter`):
+  ```json
+  {
+    "statusCode": 409,
+    "code": "DUPLICATE",
+    "message": "این رکورد قبلاً ثبت شده است",
+    "details": { "constraint": "uq_app_user_mobile" },
+    "requestId": "…",
+    "path": "/api/v1/…",
+    "timestamp": "…"
+  }
+  ```
+- `message` همیشه فارسی و قابل نمایش به کاربر است. جزئیات داخلی (stack، SQL) فقط در لاگ ثبت می‌شود و به کاربر نمی‌رسد.
+- خطاهای PostgreSQL به خطای مناسب تبدیل می‌شوند: تکراری ← 409، وابستگی ← 409، مقدار نامعتبر ← 400، تداخل هم‌زمان (deadlock) ← 409.
+- برای خطای کسب‌وکار با کد ثابت: `throw new AppException('ORDER_LOCKED', 'این سفارش قفل شده است', HttpStatus.CONFLICT)`.
+- هر درخواست یک `x-request-id` دارد (از Caddy تا وب و API یکی است). همان شناسه در پاسخ خطا، هدر و لاگ هست؛ کاربر آن را به‌عنوان «کد پیگیری» می‌بیند و با آن در Grafana خطا را پیدا می‌کنید.
+- در فرانت: `ApiError` شامل `status`، `code` و `requestId` است. `app/error.tsx`، `global-error.tsx` و `not-found.tsx` صفحه خطای فارسی نشان می‌دهند.
+
+## لاگ و مانیتورینگ
+
+همه ابزارها متن‌باز و روی همان سرور اجرا می‌شوند (بدون سرویس پولی):
+
+| ابزار                            | کار                                                                                         |
+| -------------------------------- | ------------------------------------------------------------------------------------------- |
+| Prometheus                       | جمع‌آوری متریک‌ها و ارزیابی هشدارها (`deploy/monitoring/prometheus/alerts.yml`)             |
+| Grafana                          | داشبورد «Pasha CRM — نمای کلی» (خودکار ساخته می‌شود)                                        |
+| Loki + Alloy                     | جمع‌آوری لاگ همه کانتینرها، قابل جستجو در Grafana، نگهداری ۱۴ روز                           |
+| Alertmanager                     | ارسال هشدار (ایمیل، تلگرام یا webhook در `deploy/monitoring/alertmanager/alertmanager.yml`) |
+| node / postgres / redis exporter | متریک سرور، دیتابیس و Redis                                                                 |
+
+```bash
+# در .env: GRAFANA_ADMIN_PASSWORD=<رمز قوی>
+make monitoring-up
+# از کامپیوتر خودتان (همه UIها فقط روی 127.0.0.1 سرور هستند):
+ssh -L 3001:127.0.0.1:3001 -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 user@server
+# Grafana: http://localhost:3001
+```
+
+- API در `GET /metrics` متریک Prometheus می‌دهد: زمان و تعداد درخواست‌ها به تفکیک مسیر و وضعیت، صف‌های BullMQ، حافظه و event loop. این مسیر بیرون از `/api/v1` است و از اینترنت در دسترس نیست. با `METRICS_TOKEN` می‌توانید برایش رمز هم بگذارید.
+- لاگ API در production به‌صورت JSON (pino) با `level`، `requestId`، `userId` و `ip` است. لاگ کانتینرها چرخشی است (حداکثر ۵×۲۰ مگابایت) تا دیسک پر نشود.
+- هشدارهای آماده: API یا دیتابیس یا Redis قطع، نرخ خطای ۵xx بالای ۵٪، کندی، شکست کارهای صف پیامک، پر شدن دیسک، مصرف بالای CPU و رم.
+- مانیتورینگ روی همان سرور وقتی خود سرور خاموش شود هشدار نمی‌دهد. پیشنهاد: یک Uptime Kuma (متن‌باز) روی سرور یا سیستم دیگری که `https://<DOMAIN>/healthz` را چک کند.
+- استک مانیتورینگ حدود ۷۰۰ مگابایت رم مصرف می‌کند؛ روی سرور ۴ گیگ مشکلی ندارد.

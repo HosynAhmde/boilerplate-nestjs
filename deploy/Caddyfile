@@ -1,8 +1,17 @@
 {$DOMAIN} {
 	encode zstd gzip
 
+	# JSON access log on stdout (collected by Loki when monitoring is on).
+	log {
+		output stdout
+		format json
+	}
+
 	# The web app proxies /api/v1/* to the API itself; the API is never exposed directly.
-	reverse_proxy web:3000
+	# Every request gets an id that the web proxy and the API reuse in their logs.
+	reverse_proxy web:3000 {
+		header_up X-Request-Id {http.request.uuid}
+	}
 
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"

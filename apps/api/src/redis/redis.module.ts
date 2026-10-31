@@ -1,4 +1,11 @@
-import { Global, Inject, Injectable, Module, type OnApplicationShutdown } from '@nestjs/common';
+import {
+  Global,
+  Inject,
+  Injectable,
+  Logger,
+  Module,
+  type OnApplicationShutdown,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Redis } from 'ioredis';
 import type { AppConfigService } from '../config/config.module.js';
@@ -20,8 +27,24 @@ class RedisShutdown implements OnApplicationShutdown {
     {
       provide: REDIS,
       inject: [ConfigService],
-      useFactory: (config: AppConfigService) =>
-        new Redis(config.get('REDIS_URL', { infer: true }), { maxRetriesPerRequest: 3 }),
+      useFactory: (config: AppConfigService) => {
+        const logger = new Logger('Redis');
+        const redis = new Redis(config.get('REDIS_URL', { infer: true }), {
+          maxRetriesPerRequest: 3,
+        });
+        // Without a listener ioredis prints raw "Unhandled error event" lines;
+        // log once per outage instead of on every reconnect attempt.
+        let down = false;
+        redis.on('error', (err) => {
+          if (!down) logger.error(`Redis connection error: ${err.message}`);
+          down = true;
+        });
+        redis.on('ready', () => {
+          if (down) logger.log('Redis connection restored');
+          down = false;
+        });
+        return redis;
+      },
     },
     RedisShutdown,
   ],

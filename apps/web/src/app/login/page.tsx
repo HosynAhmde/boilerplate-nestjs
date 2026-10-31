@@ -29,22 +29,33 @@ const mobileSchema = z.object({
     .trim()
     .refine((v) => normalizeMobile(v) !== null, 'شماره موبایل معتبر نیست'),
 });
-const codeSchema = z.object({
-  code: z
-    .string()
-    .transform(toAsciiDigits)
-    .pipe(z.string().regex(/^\d{5}$/, 'کد ۵ رقمی را کامل وارد کنید')),
-});
+// The server says how many digits the code has (OTP_LENGTH, 4 to 8).
+const codeSchema = (length: number) =>
+  z.object({
+    code: z
+      .string()
+      .transform(toAsciiDigits)
+      .pipe(
+        z
+          .string()
+          .regex(
+            new RegExp(`^\\d{${length}}$`),
+            `کد ${toPersianDigits(length)} رقمی را کامل وارد کنید`,
+          ),
+      ),
+  });
 
 interface OtpRequested {
   expiresInSeconds: number;
   resendInSeconds: number;
+  codeLength: number;
 }
 
 export default function LoginPage() {
   const router = useRouter();
   const { status, signIn } = useAuth();
   const [mobile, setMobile] = useState<string | null>(null);
+  const [codeLength, setCodeLength] = useState(5);
   const [resendAt, setResendAt] = useState(0);
   const [now, setNow] = useState(() => Date.now());
 
@@ -61,12 +72,16 @@ export default function LoginPage() {
     resolver: zodResolver(mobileSchema),
     defaultValues: { mobile: '' },
   });
-  const codeForm = useForm({ resolver: zodResolver(codeSchema), defaultValues: { code: '' } });
+  const codeForm = useForm({
+    resolver: zodResolver(codeSchema(codeLength)),
+    defaultValues: { code: '' },
+  });
 
   const requestOtp = useMutation({
     mutationFn: (m: string) => apiPost<OtpRequested>('/auth/otp/request', { mobile: m }),
     onSuccess: (res, m) => {
       setMobile(m);
+      setCodeLength(res.codeLength);
       setResendAt(Date.now() + res.resendInSeconds * 1000);
       codeForm.reset();
     },
@@ -133,7 +148,7 @@ export default function LoginPage() {
                   name="code"
                   render={({ field }) => (
                     <PinInput
-                      length={5}
+                      length={codeLength}
                       type="number"
                       oneTimeCode
                       autoFocus

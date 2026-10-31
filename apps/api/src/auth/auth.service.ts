@@ -105,7 +105,7 @@ export class AuthService {
       if (this.cfg('OTP_DEV_LOG')) this.logger.warn(`DEV OTP for ${mobile}: ${code}`);
     }
 
-    return { expiresInSeconds: ttl, resendInSeconds: cooldown };
+    return { expiresInSeconds: ttl, resendInSeconds: cooldown, codeLength: this.cfg('OTP_LENGTH') };
   }
 
   async verifyOtp(rawMobile: string, rawCode: string, meta: ClientMeta): Promise<IssuedTokens> {

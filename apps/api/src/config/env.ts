@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
 const bool = z.enum(['true', 'false', '1', '0']).transform((v) => v === 'true' || v === '1');
+/** An optional variable where `FOO=` (empty) in .env counts as unset. */
+const optional = <T extends z.ZodType>(schema: T) =>
+  z.preprocess((v) => (v === '' ? undefined : v), schema.optional());
 
 /**
  * All environment variables the API reads. The app refuses to start when any
@@ -21,6 +24,11 @@ export const envSchema = z.object({
 
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
   DB_LOGGING: bool.default(false),
+
+  /** Overrides the log level picked from NODE_ENV (debug in dev, info in prod). */
+  LOG_LEVEL: optional(z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])),
+  /** When set, GET /metrics requires `Authorization: Bearer <token>`. */
+  METRICS_TOKEN: optional(z.string().min(16)),
 
   REDIS_URL: z.url({ protocol: /^rediss?$/ }),
 

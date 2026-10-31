@@ -1,0 +1,38 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+scrape_configs:
+  # NestJS API: /metrics is outside /api/v1 and not reachable from the internet.
+  # If METRICS_TOKEN is set in .env, uncomment `authorization` and put the same
+  # token in prometheus/metrics_token (one line, no newline).
+  - job_name: api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['api:4000']
+    # authorization:
+    #   credentials_file: /etc/prometheus/metrics_token
+
+  - job_name: node
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  - job_name: postgres
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+
+  - job_name: redis
+    static_configs:
+      - targets: ['redis-exporter:9121']
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
