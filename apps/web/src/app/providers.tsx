@@ -16,8 +16,10 @@ export function Providers({ children }: { children: ReactNode }) {
           queries: {
             staleTime: 30_000,
             refetchOnWindowFocus: false,
-            // never retry auth/permission errors
-            retry: (count, err) => !(err instanceof ApiError && err.status < 500) && count < 2,
+            // never retry client errors (auth, permission, validation);
+            // network failures (status 0) and 5xx are retried
+            retry: (count, err) =>
+              !(err instanceof ApiError && err.status >= 400 && err.status < 500) && count < 2,
           },
         },
       }),
