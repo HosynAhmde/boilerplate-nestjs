@@ -51,12 +51,12 @@ compose up -d --remove-orphans api web caddy
 
 echo "==> waiting for API health"
 for i in $(seq 1 30); do
-  if docker compose exec -T api wget -qO- http://127.0.0.1:4000/api/v1/health >/dev/null 2>&1; then
+  if compose exec -T api wget -qO- http://127.0.0.1:4000/api/v1/health >/dev/null 2>&1; then
     echo "Deployed $APP_VERSION. All services healthy."
     docker image prune -f >/dev/null
     exit 0
   fi
   sleep 2
 done
-echo "API did not become healthy. Check: docker compose logs api" >&2
+echo "API did not become healthy. Check: docker compose --profile app logs api" >&2
 exit 1

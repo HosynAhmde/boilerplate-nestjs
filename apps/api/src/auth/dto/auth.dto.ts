@@ -19,6 +19,8 @@ export class VerifyOtpDto extends RequestOtpDto {
 export interface RequestOtpResponse {
   expiresInSeconds: number;
   resendInSeconds: number;
+  /** Number of digits in the code, so the login form matches OTP_LENGTH. */
+  codeLength: number;
 }
 
 export interface TokenResponse {

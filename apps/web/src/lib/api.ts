@@ -3,13 +3,31 @@
  * the refresh token is an httpOnly cookie the browser sends to /api/v1/auth.
  * On a 401 the request is retried once after a silent refresh.
  */
+/** The API's standard error body (see AllExceptionsFilter on the server). */
+export interface ApiErrorBody {
+  statusCode: number;
+  code: string;
+  message: string;
+  details?: unknown;
+  requestId?: string;
+}
+
 export class ApiError extends Error {
+  /** Machine-readable error code, e.g. NOT_FOUND, DUPLICATE, ORDER_LOCKED. */
+  readonly code: string;
+  /** Matches the server log line; show it to users so they can report problems. */
+  readonly requestId?: string;
+
   constructor(
     public readonly status: number,
     message: string,
     public readonly body?: unknown,
   ) {
     super(message);
+    this.name = 'ApiError';
+    const b = (body && typeof body === 'object' ? body : {}) as Partial<ApiErrorBody>;
+    this.code = typeof b.code === 'string' ? b.code : status === 0 ? 'NETWORK_ERROR' : 'ERROR';
+    this.requestId = typeof b.requestId === 'string' ? b.requestId : undefined;
   }
 }
 
@@ -63,7 +81,13 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
   if (init.body && !headers.has('content-type')) headers.set('content-type', 'application/json');
   if (accessToken) headers.set('authorization', `Bearer ${accessToken}`);
 
-  const res = await fetch(`/api/v1${path}`, { ...init, headers, credentials: 'same-origin' });
+  let res: Response;
+  try {
+    res = await fetch(`/api/v1${path}`, { ...init, headers, credentials: 'same-origin' });
+  } catch {
+    // offline or the connection dropped: give callers an ApiError like any other failure
+    throw new ApiError(0, 'اتصال به اینترنت برقرار نیست');
+  }
 
   if (res.status === 401 && retry && !path.startsWith('/auth/')) {
     if (await refreshAccessToken()) return api<T>(path, init, false);

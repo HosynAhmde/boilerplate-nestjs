@@ -1,0 +1,35 @@
+# Where alerts are sent. By default they are only visible in the Alertmanager
+# UI (http://127.0.0.1:9093) and in Grafana. Pick a receiver below, fill it in,
+# set `receiver:` to its name and run `make monitoring-up` again.
+route:
+  receiver: none
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: none
+
+  # ---- email (any SMTP server) ----
+  # - name: email
+  #   email_configs:
+  #     - to: admin@example.ir
+  #       from: alerts@example.ir
+  #       smarthost: smtp.example.ir:587
+  #       auth_username: alerts@example.ir
+  #       auth_password: change-me
+  #       send_resolved: true
+
+  # ---- Telegram bot (server must reach api.telegram.org) ----
+  # - name: telegram
+  #   telegram_configs:
+  #     - bot_token: '123456:ABC...'
+  #       chat_id: 123456789
+  #       send_resolved: true
+
+  # ---- any HTTP endpoint (e.g. a small script that sends an SMS) ----
+  # - name: webhook
+  #   webhook_configs:
+  #     - url: http://example.internal/alert
+  #       send_resolved: true

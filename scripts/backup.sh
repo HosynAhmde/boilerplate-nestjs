@@ -6,23 +6,28 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-set -a; [ -f .env ] && . ./.env; set +a
+. scripts/env.sh && load_env
 KEEP_DAYS="${BACKUP_KEEP_DAYS:-14}"
 DIR="backups"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$DIR"
 
 echo "[$(date -Is)] database dump"
+# Write to a temp file first so a failed dump never looks like a good backup.
 docker compose exec -T postgres \
   pg_dump -U "${POSTGRES_USER:-pasha}" -d "${POSTGRES_DB:-pasha_crm}" --format=custom --compress=9 \
-  > "$DIR/db-$STAMP.dump"
+  > "$DIR/db-$STAMP.dump.tmp"
+mv "$DIR/db-$STAMP.dump.tmp" "$DIR/db-$STAMP.dump"
 
 # File storage volume (local driver). Skipped when the api container is absent.
-if docker compose ps --status running --services 2>/dev/null | grep -qx api; then
+# The api service lives in the `app` profile, so compose only sees it with --profile app.
+if docker compose --profile app ps --status running --services 2>/dev/null | grep -qx api; then
   echo "[$(date -Is)] files"
-  docker compose exec -T api tar -C /app/storage -czf - . > "$DIR/files-$STAMP.tar.gz"
+  docker compose --profile app exec -T api tar -C /app/storage -czf - . > "$DIR/files-$STAMP.tar.gz.tmp"
+  mv "$DIR/files-$STAMP.tar.gz.tmp" "$DIR/files-$STAMP.tar.gz"
 fi
 
 find "$DIR" -name 'db-*.dump' -mtime +"$KEEP_DAYS" -delete
 find "$DIR" -name 'files-*.tar.gz' -mtime +"$KEEP_DAYS" -delete
+find "$DIR" -name '*.tmp' -mmin +60 -delete
 echo "[$(date -Is)] done: $DIR/db-$STAMP.dump"

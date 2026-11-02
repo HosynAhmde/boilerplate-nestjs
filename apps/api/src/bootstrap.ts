@@ -18,7 +18,9 @@ export function configureApp(app: INestApplication): void {
   app.use(helmet());
   app.use(cookieParser());
   app.enableCors({ origin: config.get('CORS_ORIGINS', { infer: true }), credentials: true });
-  app.setGlobalPrefix('api/v1');
+  // /metrics stays outside the prefix: the web proxy only forwards /api/*, so
+  // Prometheus can scrape it on the internal network but the internet cannot.
+  app.setGlobalPrefix('api/v1', { exclude: ['metrics'] });
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
